@@ -1,0 +1,30 @@
+package jinser/json/lib
+
+// Values
+
+// Types and methods
+type Context
+
+type ContinueValue
+
+type CustomDecode
+
+type FinishValue
+impl Show for FinishValue
+
+type FuncData
+impl Show for FuncData
+
+type InvalidByte
+impl Show for InvalidByte
+
+type Stack
+impl Show for Stack
+
+type Value
+
+// Type aliases
+
+// Traits
+trait Decode
+
