@@ -245,7 +245,7 @@ fn array_push!(ctx : Context, value0 : Json) -> Value {
       array_push!({ ..ctx, rest, skip: skip + 1 }, value0)
     [']', .. rest] => {
       let acc = ctx.decode.array_push(value0, ctx.arr_acc)
-      guard let Some(Stack::Array(old_acc)) = ctx.stack.pop()
+      guard ctx.stack.pop() is Some(Stack::Array(old_acc))
       let (array_value, new_acc) = ctx.decode.array_finish(acc, old_acc)
       continue_!(
         { ..ctx, rest, skip: skip + 1, arr_acc: new_acc },
@@ -318,7 +318,7 @@ fn object_push!(ctx : Context, value0 : Json, key : String) -> Value {
       object_push!({ ..ctx, rest, skip: skip + 1 }, value0, key)
     ['}', .. rest] => {
       let acc = ctx.decode.object_push(key, value0, ctx.obj_acc)
-      guard let Some(Stack::Map(old_acc)) = ctx.stack.pop()
+      guard ctx.stack.pop() is Some(Stack::Map(old_acc))
       let (object_value, new_acc) = ctx.decode.object_finish(acc, old_acc)
       continue_!(
         { ..ctx, rest, skip: skip + 1, obj_acc: new_acc },
@@ -424,13 +424,12 @@ impl Decode for CustomDecode with string!(_self, s) {
   s
 }
 
+///|
 test "json" {
   let compelet_json =
     #|{"foo": {"bar": 1}, "quz": [42, true]}
-  guard let [first_chunk, .. chunks] = compelet_json
-    .to_array()
-    .chunks(6)
-    .map(String::from_array)
+  guard compelet_json.to_array().chunks(6).map(String::from_array)
+    is [first_chunk, .. chunks]
   let value = decode_start!(first_chunk, decode=CustomDecode::{  })
   println("start parsing from `\{first_chunk}`")
   loop chunks, value {
