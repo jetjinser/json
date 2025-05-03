@@ -3,11 +3,11 @@
     "core": {
       "flake": false,
       "locked": {
-        "lastModified": 1743331608,
-        "narHash": "sha256-y1aySxjNDCf2pkjOu44w1CweFPIgfDo8DEveJQoW/nQ=",
+        "lastModified": 1746162477,
+        "narHash": "sha256-T9TWWT7opyPTrIQsdUKBlNzVZVDm2h6zn25czzl6zyM=",
         "owner": "moonbitlang",
         "repo": "core",
-        "rev": "efe0325be16ba595ca8b4bee27ace97587e28e25",
+        "rev": "8af0a0efeb64f6ed7dd431248c1289af528ec430",
         "type": "github"
       },
       "original": {
@@ -59,11 +59,11 @@
         "treefmt-nix": "treefmt-nix"
       },
       "locked": {
-        "lastModified": 1743410537,
-        "narHash": "sha256-UUrdd8zZ64OG7N0bTkbrsah0bgkE0VsYYk6zWCI3en0=",
+        "lastModified": 1746241392,
+        "narHash": "sha256-UbwDq4lAV2ewA596q0xVQICLPC+k7xIjmg/TddEXff8=",
         "owner": "jetjinser",
         "repo": "moonbit-overlay",
-        "rev": "a6faa836d0e1aa67acf3d11e47b29e8f822eda8d",
+        "rev": "8879ab9859c7856c4d8b645d9793dc1abcc7cbdd",
         "type": "github"
       },
       "original": {
