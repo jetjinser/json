@@ -1,4 +1,5 @@
 // TODO:
+// - number parsing
 // - reasonable Error
 // - inplace mutable for some attributes
 
@@ -42,7 +43,7 @@ fn decode!(input : String, decode? : &Decode) -> Json {
     Finish({ value, rest: [], .. }) => value
     Finish({ rest, .. }) => raise invalid_byte([..rest], 0)
     Continue({ func_data: FuncData::Number(n), .. }) =>
-      Json::Number(n.to_double())
+      Json::number(n.to_double())
     Continue({ func_data, .. }) => {
       println("unexpected end: \{func_data}")
       // TODO: unexpected_end error
@@ -122,7 +123,7 @@ fn number_zero!(ctx : Context, len : Int) -> Value {
       let value = ctx.decode.integer!(['0'][:])
       continue_!(
         { ..ctx, rest, skip: ctx.skip + len },
-        Json::Number(value.to_double()),
+        Json::number(value.to_double()),
       )
     }
   }
@@ -143,7 +144,7 @@ fn number!(ctx : Context, len : Int) -> Value {
       let value = ctx.decode.integer!(part)
       continue_!(
         { ..ctx, rest, skip: skip + len },
-        Json::Number(value.to_double()),
+        Json::number(value.to_double()),
       )
     }
   }
@@ -166,7 +167,7 @@ fn number_minus!(ctx : Context) -> Value {
 fn true_!(ctx : Context) -> Value {
   match ctx.rest {
     ['r', 'u', 'e', .. rest] =>
-      continue_!({ ..ctx, rest, skip: ctx.skip + 4 }, Json::True)
+      continue_!({ ..ctx, rest, skip: ctx.skip + 4 }, Json::boolean(true))
     _ => unexpected!(ctx, 1, 3, FuncData::Value)
   }
 }
@@ -175,7 +176,7 @@ fn true_!(ctx : Context) -> Value {
 fn false_!(ctx : Context) -> Value {
   match ctx.rest {
     ['a', 'l', 's', 'e', .. rest] =>
-      continue_!({ ..ctx, rest, skip: ctx.skip + 5 }, Json::False)
+      continue_!({ ..ctx, rest, skip: ctx.skip + 5 }, Json::boolean(false))
     _ => unexpected!(ctx, 1, 4, FuncData::Value)
   }
 }
@@ -184,7 +185,7 @@ fn false_!(ctx : Context) -> Value {
 fn null!(ctx : Context) -> Value {
   match ctx.rest {
     ['u', 'l', 'l', .. rest] =>
-      continue_!({ ..ctx, rest, skip: ctx.skip + 4 }, Json::Null)
+      continue_!({ ..ctx, rest, skip: ctx.skip + 4 }, Json::null())
     _ => unexpected!(ctx, 1, 3, FuncData::Value)
   }
 }
@@ -201,7 +202,7 @@ fn string!(ctx : Context, len : Int) -> Value {
       let value = original[skip:skip + len]
       let skip = skip + len + 1
       let s = ctx.decode.string(String::from_iter(value.iter()))
-      continue_!({ ..ctx, rest, skip }, Json::String(s))
+      continue_!({ ..ctx, rest, skip }, Json::string(s))
     }
     [_, .. rest] => string!({ ..ctx, rest, }, len + 1)
     _ => unexpected!({ ..ctx, skip: skip - 1 }, len + 1, 0, FuncData::Value)
@@ -225,7 +226,7 @@ fn array_start!(ctx : Context, len : Int) -> Value {
       )
       continue_!(
         { ..ctx, rest, skip: skip + len + 1, arr_acc: new_acc },
-        Json::Array(value),
+        Json::array(value),
       )
     }
     [] => unexpected!(ctx, len, 0, FuncData::Value)
@@ -249,7 +250,7 @@ fn array_push!(ctx : Context, value0 : Json) -> Value {
       let (array_value, new_acc) = ctx.decode.array_finish(acc, old_acc)
       continue_!(
         { ..ctx, rest, skip: skip + 1, arr_acc: new_acc },
-        Json::Array(array_value),
+        Json::array(array_value),
       )
     }
     [',', .. rest] => {
@@ -277,7 +278,7 @@ fn object_start!(ctx : Context, len : Int) -> Value {
       )
       continue_!(
         { ..ctx, rest, skip: skip + len + 1, obj_acc: new_acc },
-        Json::Object(value),
+        Json::object(value),
       )
     }
     ['"', .. rest] => {
@@ -322,7 +323,7 @@ fn object_push!(ctx : Context, value0 : Json, key : String) -> Value {
       let (object_value, new_acc) = ctx.decode.object_finish(acc, old_acc)
       continue_!(
         { ..ctx, rest, skip: skip + 1, obj_acc: new_acc },
-        Json::Object(object_value),
+        Json::object(object_value),
       )
     }
     [',', .. rest] => {
@@ -410,7 +411,7 @@ fn invalid_byte(arr : Array[Char], skip : Int) -> InvalidByte {
 struct CustomDecode {}
 
 ///|
-impl Decode for CustomDecode with object_push!(_self, key, value, acc) {
+impl Decode for CustomDecode with object_push(_self, key, value, acc) {
   match key {
     "foo" | "bar" => acc[key] = value
     _ => ()
@@ -419,7 +420,7 @@ impl Decode for CustomDecode with object_push!(_self, key, value, acc) {
 }
 
 ///|
-impl Decode for CustomDecode with string!(_self, s) {
+impl Decode for CustomDecode with string(_self, s) {
   println("got string `\{s}`")
   s
 }
