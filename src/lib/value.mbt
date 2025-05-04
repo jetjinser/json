@@ -25,9 +25,11 @@ struct FinishValue {
 ///|
 enum FuncData {
   Value
-  Number(Int)
+  NumberI(Int)
+  NumberD(Double)
   Key
   ArrayPush(Json)
   ObjectValue(String)
   ObjectPush((Json, String))
+  FloatError(ArrayView[Char], Int)
 } derive(Show)

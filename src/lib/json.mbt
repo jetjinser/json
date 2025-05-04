@@ -1,5 +1,4 @@
 // TODO:
-// - number parsing
 // - reasonable Error
 // - inplace mutable for some attributes
 
@@ -42,8 +41,8 @@ fn decode!(input : String, decode? : &Decode) -> Json {
   match value!(ctx) {
     Finish({ value, rest: [], .. }) => value
     Finish({ rest, .. }) => raise invalid_byte([..rest], 0)
-    Continue({ func_data: FuncData::Number(n), .. }) =>
-      Json::number(n.to_double())
+    Continue({ func_data: FuncData::NumberI(n), .. }) => n.to_json()
+    Continue({ func_data: FuncData::NumberD(n), .. }) => n.to_json()
     Continue({ func_data, .. }) => {
       println("unexpected end: \{func_data}")
       // TODO: unexpected_end error
@@ -83,11 +82,12 @@ fn decode_continue!(cont : String, state : ContinueValue) -> Value {
     decode: state.decode,
   }
   match state.func_data {
-    Value | Number(_) => value!(ctx)
+    Value | NumberI(_) | NumberD(_) => value!(ctx)
     ArrayPush(v) => array_push!(ctx, v)
     ObjectValue(key) => object_value!(ctx, key)
     ObjectPush((value, key)) => object_push!(ctx, value, key)
     Key => object_key!(ctx)
+    FloatError(_token, _skip) => value!(ctx)
   }
 }
 
@@ -98,7 +98,7 @@ fn value!(ctx : Context) -> Value {
     ['\ ' | '\n' | '\r' | '\t', .. rest] =>
       value!({ ..ctx, rest, skip: ctx.skip + 1 })
     ['0', .. rest] => number_zero!({ ..ctx, rest, }, 1)
-    ['0'..='9', .. rest] => number!({ ..ctx, rest, }, 1)
+    ['1'..='9', .. rest] => number!({ ..ctx, rest, }, 1)
     ['-', .. rest] => number_minus!({ ..ctx, rest, })
     ['t', .. rest] => true_!({ ..ctx, rest, })
     ['f', .. rest] => false_!({ ..ctx, rest, })
@@ -117,7 +117,7 @@ fn number_zero!(ctx : Context, len : Int) -> Value {
   match ctx.rest {
     [] => {
       let value = ctx.decode.integer!(['0'][:])
-      unexpected!(ctx, len, 0, FuncData::Number(value))
+      unexpected!(ctx, len, 0, FuncData::NumberI(value))
     }
     rest => {
       let value = ctx.decode.integer!(['0'][:])
@@ -134,10 +134,15 @@ fn number!(ctx : Context, len : Int) -> Value {
   let { original, skip, .. } = ctx
   match ctx.rest {
     ['0'..='9', .. rest] => number!({ ..ctx, rest, }, len + 1)
+    ['.', .. rest] => number_frac!({ ..ctx, rest, }, len + 1)
+    ['e' | 'E', .. rest] => {
+      let prefix = original[skip:skip + len]
+      number_exp_copy!({ ..ctx, rest, }, len + 1, prefix)
+    }
     [] => {
       let part = original[skip:skip + len]
       let value = ctx.decode.integer!(part)
-      unexpected!(ctx, len, 0, FuncData::Number(value))
+      unexpected!(ctx, len, 0, FuncData::NumberI(value))
     }
     rest => {
       let part = original[skip:skip + len]
@@ -146,6 +151,123 @@ fn number!(ctx : Context, len : Int) -> Value {
         { ..ctx, rest, skip: skip + len },
         Json::number(value.to_double()),
       )
+    }
+  }
+}
+
+///|
+fn number_frac!(ctx : Context, len : Int) -> Value {
+  match ctx.rest {
+    ['0'..='9', .. rest] => number_frac_cont!({ ..ctx, rest, }, len + 1)
+    _ => unexpected!(ctx, len, 0, FuncData::Value)
+  }
+}
+
+///|
+fn number_frac_cont!(ctx : Context, len : Int) -> Value {
+  let { original, skip, .. } = ctx
+  match ctx.rest {
+    ['0'..='9', .. rest] => number_frac_cont!({ ..ctx, rest, }, len + 1)
+    ['e' | 'E', .. rest] => number_exp!({ ..ctx, rest, }, len + 1)
+    _ => {
+      let token = original[skip:skip + len]
+      float_decode!(ctx, len, token)
+    }
+  }
+}
+
+///|
+fn float_decode!(ctx : Context, len : Int, token : ArrayView[Char]) -> Value {
+  let { skip, .. } = ctx
+  match ctx.rest {
+    [] =>
+      match ctx.decode.double?(token) {
+        Ok(value) => unexpected!(ctx, len, 0, FuncData::NumberD(value))
+        Err(_) => unexpected!(ctx, len, 0, FuncData::FloatError(token, skip))
+      }
+    rest =>
+      match ctx.decode.double?(token) {
+        Ok(value) =>
+          continue_!({ ..ctx, rest, skip: skip + len }, value.to_json())
+        Err(_) =>
+          unexpected!(ctx, len, 0, FuncData::FloatError(token, ctx.skip))
+      }
+  }
+}
+
+///|
+fn number_exp!(ctx : Context, len : Int) -> Value {
+  match ctx.rest {
+    ['0'..='9', .. rest] => number_exp_cont!({ ..ctx, rest, }, len + 1)
+    ['+' | '-', .. rest] => number_exp_sign!({ ..ctx, rest, }, len + 1)
+    _ => unexpected!(ctx, len, 0, FuncData::Value)
+  }
+}
+
+///|
+fn number_exp_sign!(ctx : Context, len : Int) -> Value {
+  match ctx.rest {
+    ['0'..='9', .. rest] => number_exp_sign!({ ..ctx, rest, }, len + 1)
+    _ => unexpected!(ctx, len, 0, FuncData::Value)
+  }
+}
+
+///|
+fn number_exp_cont!(ctx : Context, len : Int) -> Value {
+  let { original, skip, .. } = ctx
+  match ctx.rest {
+    ['0'..='9', .. rest] => number_exp_cont!({ ..ctx, rest, }, len + 1)
+    _ => {
+      let token = original[skip:skip + len]
+      float_decode!(ctx, len, token)
+    }
+  }
+}
+
+///|
+fn number_exp_copy!(
+  ctx : Context,
+  len : Int,
+  prefix : ArrayView[Char]
+) -> Value {
+  match ctx.rest {
+    ['0'..='9', .. rest] =>
+      number_exp_cont_with_prefix!({ ..ctx, rest, }, len, prefix, 1)
+    ['+' | '-', .. rest] =>
+      number_exp_sign_with_prefix!({ ..ctx, rest, }, len, prefix, 1)
+    _ => unexpected!(ctx, len, 0, FuncData::Value)
+  }
+}
+
+///|
+fn number_exp_sign_with_prefix!(
+  ctx : Context,
+  len : Int,
+  prefix : ArrayView[Char],
+  exp_len : Int
+) -> Value {
+  match ctx.rest {
+    ['0'..='9', .. rest] =>
+      number_exp_cont_with_prefix!({ ..ctx, rest, }, len, prefix, exp_len + 1)
+    _ => unexpected!(ctx, len + exp_len, 0, FuncData::Value)
+  }
+}
+
+///|
+fn number_exp_cont_with_prefix!(
+  ctx : Context,
+  len : Int,
+  prefix : ArrayView[Char],
+  exp_len : Int
+) -> Value {
+  let { original, skip, .. } = ctx
+  match ctx.rest {
+    ['0'..='9', .. rest] =>
+      number_exp_cont_with_prefix!({ ..ctx, rest, }, len, prefix, exp_len + 1)
+    _ => {
+      let suffix = original[skip:skip + len]
+      let token = [..prefix, '.', '0', 'e', ..suffix]
+      float_decode!(ctx, len + exp_len, token)
     }
   }
 }
