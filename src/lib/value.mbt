@@ -1,21 +1,21 @@
 ///|
-enum Value {
+pub enum Value {
   Continue(ContinueValue)
   Finish(FinishValue)
 }
 
 ///|
-struct ContinueValue {
+pub struct ContinueValue {
   rest : ArrayView[Char]
   arr_acc : JsonArray
   obj_acc : JsonObject
   stack : Array[Stack]
   decode : &Decode
-  func_data : FuncData
+  checkpoint : Checkpoint
 }
 
 ///|
-struct FinishValue {
+pub struct FinishValue {
   value : Json
   arr_acc : JsonArray
   obj_acc : JsonObject
@@ -23,7 +23,7 @@ struct FinishValue {
 } derive(Show)
 
 ///|
-enum FuncData {
+enum Checkpoint {
   Value
   NumberI(Int)
   NumberD(Double)

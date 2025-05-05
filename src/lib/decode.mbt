@@ -1,11 +1,11 @@
 ///|
-typealias JsonArray = Array[Json]
+pub typealias JsonArray = Array[Json]
 
 ///|
-typealias JsonObject = Map[String, Json]
+pub typealias JsonObject = Map[String, Json]
 
 ///|
-trait Decode {
+pub trait Decode {
   array_start(Self, JsonArray) -> JsonArray = _
   array_push(Self, Json, JsonArray) -> JsonArray = _
   array_finish(Self, JsonArray, JsonArray) -> (JsonArray, JsonArray) = _

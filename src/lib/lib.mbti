@@ -1,19 +1,42 @@
-package jinser/json/lib
+package "jinser/json/lib"
 
 // Values
+fn decode(String, decode? : &Decode) -> Json!
+
+fn decode_continue(String, ContinueValue) -> Value!
+
+fn decode_start(String, decode? : &Decode) -> Value!
 
 // Types and methods
-type Context
+type Checkpoint
+impl Show for Checkpoint
 
-type ContinueValue
+pub struct Context {
+  original : Array[Char]
+  rest : ArrayView[Char]
+  skip : Int
+  arr_acc : Array[Json]
+  obj_acc : Map[String, Json]
+  stack : Array[Stack]
+  decode : &Decode
+}
 
-type CustomDecode
+pub struct ContinueValue {
+  rest : ArrayView[Char]
+  arr_acc : Array[Json]
+  obj_acc : Map[String, Json]
+  stack : Array[Stack]
+  decode : &Decode
+  checkpoint : Checkpoint
+}
 
-type FinishValue
+pub struct FinishValue {
+  value : Json
+  arr_acc : Array[Json]
+  obj_acc : Map[String, Json]
+  rest : ArrayView[Char]
+}
 impl Show for FinishValue
-
-type FuncData
-impl Show for FuncData
 
 type InvalidByte
 impl Show for InvalidByte
@@ -21,10 +44,26 @@ impl Show for InvalidByte
 type Stack
 impl Show for Stack
 
-type Value
+pub enum Value {
+  Continue(ContinueValue)
+  Finish(FinishValue)
+}
 
 // Type aliases
+pub typealias JsonArray = Array[Json]
+
+pub typealias JsonObject = Map[String, Json]
 
 // Traits
-trait Decode
+pub trait Decode {
+  array_start(Self, Array[Json]) -> Array[Json]
+  array_push(Self, Json, Array[Json]) -> Array[Json]
+  array_finish(Self, Array[Json], Array[Json]) -> (Array[Json], Array[Json])
+  object_start(Self, Map[String, Json]) -> Map[String, Json]
+  object_push(Self, String, Json, Map[String, Json]) -> Map[String, Json]
+  object_finish(Self, Map[String, Json], Map[String, Json]) -> (Map[String, Json], Map[String, Json])
+  double(Self, ArrayView[Char]) -> Double!
+  integer(Self, ArrayView[Char]) -> Int!
+  string(Self, String) -> String
+}
 

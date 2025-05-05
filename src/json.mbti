@@ -1,11 +1,24 @@
-package jinser/json
+package "jinser/json"
+
+import(
+  "jinser/json/lib"
+)
 
 // Values
-fn greeting() -> Unit
+fn decode(String, decode? : &@lib.Decode) -> Json!
+
+fn decode_continue(String, @lib.ContinueValue) -> @lib.Value!
+
+fn decode_start(String, decode? : &@lib.Decode) -> @lib.Value!
 
 // Types and methods
 
 // Type aliases
+pub typealias Context = @lib.Context
+
+pub typealias Value = @lib.Value
+
+pub traitalias Decode = @lib.Decode
 
 // Traits
 

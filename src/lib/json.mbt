@@ -6,7 +6,7 @@
 type! InvalidByte (Int, Char) derive(Show)
 
 ///|
-struct Context {
+priv struct Context {
   original : Array[Char]
   rest : ArrayView[Char]
   skip : Int
@@ -24,7 +24,7 @@ enum Stack {
 } derive(Show)
 
 ///|
-fn decode!(input : String, decode? : &Decode) -> Json {
+pub fn decode!(input : String, decode? : &Decode) -> Json {
   let decode = match decode {
     Some(decode) => decode
     None => ()
@@ -41,9 +41,9 @@ fn decode!(input : String, decode? : &Decode) -> Json {
   match value!(ctx) {
     Finish({ value, rest: [], .. }) => value
     Finish({ rest, .. }) => raise invalid_byte([..rest], 0)
-    Continue({ func_data: FuncData::NumberI(n), .. }) => n.to_json()
-    Continue({ func_data: FuncData::NumberD(n), .. }) => n.to_json()
-    Continue({ func_data, .. }) => {
+    Continue({ checkpoint: Checkpoint::NumberI(n), .. }) => n.to_json()
+    Continue({ checkpoint: Checkpoint::NumberD(n), .. }) => n.to_json()
+    Continue({ checkpoint: func_data, .. }) => {
       println("unexpected end: \{func_data}")
       // TODO: unexpected_end error
       raise invalid_byte([], 0)
@@ -52,7 +52,7 @@ fn decode!(input : String, decode? : &Decode) -> Json {
 }
 
 ///|
-fn decode_start!(input : String, decode? : &Decode) -> Value {
+pub fn decode_start!(input : String, decode? : &Decode) -> Value {
   let decode = match decode {
     Some(decode) => decode
     None => ()
@@ -70,7 +70,7 @@ fn decode_start!(input : String, decode? : &Decode) -> Value {
 }
 
 ///|
-fn decode_continue!(cont : String, state : ContinueValue) -> Value {
+pub fn decode_continue!(cont : String, state : ContinueValue) -> Value {
   let input = [..state.rest, ..cont.to_array()]
   let ctx = Context::{
     rest: input[:],
@@ -81,7 +81,7 @@ fn decode_continue!(cont : String, state : ContinueValue) -> Value {
     stack: state.stack,
     decode: state.decode,
   }
-  match state.func_data {
+  match state.checkpoint {
     Value | NumberI(_) | NumberD(_) => value!(ctx)
     ArrayPush(v) => array_push!(ctx, v)
     ObjectValue(key) => object_value!(ctx, key)
@@ -106,7 +106,7 @@ fn value!(ctx : Context) -> Value {
     ['"', .. rest] => string!({ ..ctx, rest, skip: ctx.skip + 1 }, 0)
     ['[', .. rest] => array_start!({ ..ctx, rest, }, 1)
     ['{', .. rest] => object_start!({ ..ctx, rest, }, 1)
-    _ => unexpected!(ctx, 0, 0, FuncData::Value)
+    _ => unexpected!(ctx, 0, 0, Checkpoint::Value)
   }
 }
 
@@ -117,7 +117,7 @@ fn number_zero!(ctx : Context, len : Int) -> Value {
   match ctx.rest {
     [] => {
       let value = ctx.decode.integer!(['0'][:])
-      unexpected!(ctx, len, 0, FuncData::NumberI(value))
+      unexpected!(ctx, len, 0, Checkpoint::NumberI(value))
     }
     rest => {
       let value = ctx.decode.integer!(['0'][:])
@@ -142,7 +142,7 @@ fn number!(ctx : Context, len : Int) -> Value {
     [] => {
       let part = original[skip:skip + len]
       let value = ctx.decode.integer!(part)
-      unexpected!(ctx, len, 0, FuncData::NumberI(value))
+      unexpected!(ctx, len, 0, Checkpoint::NumberI(value))
     }
     rest => {
       let part = original[skip:skip + len]
@@ -159,7 +159,7 @@ fn number!(ctx : Context, len : Int) -> Value {
 fn number_frac!(ctx : Context, len : Int) -> Value {
   match ctx.rest {
     ['0'..='9', .. rest] => number_frac_cont!({ ..ctx, rest, }, len + 1)
-    _ => unexpected!(ctx, len, 0, FuncData::Value)
+    _ => unexpected!(ctx, len, 0, Checkpoint::Value)
   }
 }
 
@@ -182,15 +182,15 @@ fn float_decode!(ctx : Context, len : Int, token : ArrayView[Char]) -> Value {
   match ctx.rest {
     [] =>
       match ctx.decode.double?(token) {
-        Ok(value) => unexpected!(ctx, len, 0, FuncData::NumberD(value))
-        Err(_) => unexpected!(ctx, len, 0, FuncData::FloatError(token, skip))
+        Ok(value) => unexpected!(ctx, len, 0, Checkpoint::NumberD(value))
+        Err(_) => unexpected!(ctx, len, 0, Checkpoint::FloatError(token, skip))
       }
     rest =>
       match ctx.decode.double?(token) {
         Ok(value) =>
           continue_!({ ..ctx, rest, skip: skip + len }, value.to_json())
         Err(_) =>
-          unexpected!(ctx, len, 0, FuncData::FloatError(token, ctx.skip))
+          unexpected!(ctx, len, 0, Checkpoint::FloatError(token, ctx.skip))
       }
   }
 }
@@ -200,7 +200,7 @@ fn number_exp!(ctx : Context, len : Int) -> Value {
   match ctx.rest {
     ['0'..='9', .. rest] => number_exp_cont!({ ..ctx, rest, }, len + 1)
     ['+' | '-', .. rest] => number_exp_sign!({ ..ctx, rest, }, len + 1)
-    _ => unexpected!(ctx, len, 0, FuncData::Value)
+    _ => unexpected!(ctx, len, 0, Checkpoint::Value)
   }
 }
 
@@ -208,7 +208,7 @@ fn number_exp!(ctx : Context, len : Int) -> Value {
 fn number_exp_sign!(ctx : Context, len : Int) -> Value {
   match ctx.rest {
     ['0'..='9', .. rest] => number_exp_sign!({ ..ctx, rest, }, len + 1)
-    _ => unexpected!(ctx, len, 0, FuncData::Value)
+    _ => unexpected!(ctx, len, 0, Checkpoint::Value)
   }
 }
 
@@ -235,7 +235,7 @@ fn number_exp_copy!(
       number_exp_cont_with_prefix!({ ..ctx, rest, }, len, prefix, 1)
     ['+' | '-', .. rest] =>
       number_exp_sign_with_prefix!({ ..ctx, rest, }, len, prefix, 1)
-    _ => unexpected!(ctx, len, 0, FuncData::Value)
+    _ => unexpected!(ctx, len, 0, Checkpoint::Value)
   }
 }
 
@@ -249,7 +249,7 @@ fn number_exp_sign_with_prefix!(
   match ctx.rest {
     ['0'..='9', .. rest] =>
       number_exp_cont_with_prefix!({ ..ctx, rest, }, len, prefix, exp_len + 1)
-    _ => unexpected!(ctx, len + exp_len, 0, FuncData::Value)
+    _ => unexpected!(ctx, len + exp_len, 0, Checkpoint::Value)
   }
 }
 
@@ -277,7 +277,7 @@ fn number_minus!(ctx : Context) -> Value {
   match ctx.rest {
     ['0', .. rest] => number_zero!({ ..ctx, rest, }, 2)
     ['0'..='9', .. rest] => number!({ ..ctx, rest, }, 2)
-    _ => unexpected!(ctx, 1, 0, FuncData::Value)
+    _ => unexpected!(ctx, 1, 0, Checkpoint::Value)
   }
 }
 
@@ -290,7 +290,7 @@ fn true_!(ctx : Context) -> Value {
   match ctx.rest {
     ['r', 'u', 'e', .. rest] =>
       continue_!({ ..ctx, rest, skip: ctx.skip + 4 }, Json::boolean(true))
-    _ => unexpected!(ctx, 1, 3, FuncData::Value)
+    _ => unexpected!(ctx, 1, 3, Checkpoint::Value)
   }
 }
 
@@ -299,7 +299,7 @@ fn false_!(ctx : Context) -> Value {
   match ctx.rest {
     ['a', 'l', 's', 'e', .. rest] =>
       continue_!({ ..ctx, rest, skip: ctx.skip + 5 }, Json::boolean(false))
-    _ => unexpected!(ctx, 1, 4, FuncData::Value)
+    _ => unexpected!(ctx, 1, 4, Checkpoint::Value)
   }
 }
 
@@ -308,7 +308,7 @@ fn null!(ctx : Context) -> Value {
   match ctx.rest {
     ['u', 'l', 'l', .. rest] =>
       continue_!({ ..ctx, rest, skip: ctx.skip + 4 }, Json::null())
-    _ => unexpected!(ctx, 1, 3, FuncData::Value)
+    _ => unexpected!(ctx, 1, 3, Checkpoint::Value)
   }
 }
 
@@ -327,7 +327,7 @@ fn string!(ctx : Context, len : Int) -> Value {
       continue_!({ ..ctx, rest, skip }, Json::string(s))
     }
     [_, .. rest] => string!({ ..ctx, rest, }, len + 1)
-    _ => unexpected!({ ..ctx, skip: skip - 1 }, len + 1, 0, FuncData::Value)
+    _ => unexpected!({ ..ctx, skip: skip - 1 }, len + 1, 0, Checkpoint::Value)
   }
 }
 
@@ -351,7 +351,7 @@ fn array_start!(ctx : Context, len : Int) -> Value {
         Json::array(value),
       )
     }
-    [] => unexpected!(ctx, len, 0, FuncData::Value)
+    [] => unexpected!(ctx, len, 0, Checkpoint::Value)
     rest => {
       let new_acc = decode.array_start(arr_acc)
       ctx.stack.push(Stack::Array(arr_acc))
@@ -379,7 +379,7 @@ fn array_push!(ctx : Context, value0 : Json) -> Value {
       let arr_acc = ctx.decode.array_push(value0, ctx.arr_acc)
       value!({ ..ctx, rest, skip: skip + 1, arr_acc })
     }
-    _ => unexpected!(ctx, 0, 0, FuncData::ArrayPush(value0))
+    _ => unexpected!(ctx, 0, 0, Checkpoint::ArrayPush(value0))
   }
 }
 
@@ -415,7 +415,7 @@ fn object_start!(ctx : Context, len : Int) -> Value {
         0,
       )
     }
-    _ => unexpected!(ctx, len, 0, FuncData::Value)
+    _ => unexpected!(ctx, len, 0, Checkpoint::Value)
   }
 }
 
@@ -429,7 +429,7 @@ fn object_value!(ctx : Context, key : String) -> Value {
       ctx.stack.push(Stack::Key(key))
       value!({ ..ctx, rest, skip: skip + 1 })
     }
-    _ => unexpected!(ctx, 0, 0, FuncData::ObjectValue(key))
+    _ => unexpected!(ctx, 0, 0, Checkpoint::ObjectValue(key))
   }
 }
 
@@ -452,7 +452,7 @@ fn object_push!(ctx : Context, value0 : Json, key : String) -> Value {
       let obj_acc = ctx.decode.object_push(key, value0, ctx.obj_acc)
       object_key!({ ..ctx, rest, skip: skip + 1, obj_acc })
     }
-    _ => unexpected!(ctx, 0, 0, FuncData::ObjectPush((value0, key)))
+    _ => unexpected!(ctx, 0, 0, Checkpoint::ObjectPush((value0, key)))
   }
 }
 
@@ -463,7 +463,7 @@ fn object_key!(ctx : Context) -> Value {
     ['\ ' | '\n' | '\r' | '\t', .. rest] =>
       object_key!({ ..ctx, rest, skip: skip + 1 })
     ['"', .. rest] => string!({ ..ctx, rest, skip: skip + 1 }, 0)
-    _ => unexpected!(ctx, 0, 0, FuncData::Key)
+    _ => unexpected!(ctx, 0, 0, Checkpoint::Key)
   }
 }
 
@@ -501,7 +501,7 @@ fn unexpected(
   ctx : Context,
   pos : Int,
   len : Int,
-  func_data : FuncData
+  func_data : Checkpoint
 ) -> Value! {
   let { original, arr_acc, obj_acc, skip, stack, decode, .. } = ctx
   let required_size = skip + pos + len
@@ -514,7 +514,7 @@ fn unexpected(
       obj_acc,
       stack,
       decode,
-      func_data,
+      checkpoint: func_data,
     })
   } else {
     raise invalid_byte(ctx.original, ctx.skip + pos)
@@ -525,45 +525,4 @@ fn unexpected(
 fn invalid_byte(arr : Array[Char], skip : Int) -> InvalidByte {
   let byte = arr[skip]
   InvalidByte((skip, byte))
-}
-
-/// ==== example ====
-
-///|
-struct CustomDecode {}
-
-///|
-impl Decode for CustomDecode with object_push(_self, key, value, acc) {
-  match key {
-    "foo" | "bar" => acc[key] = value
-    _ => ()
-  }
-  acc
-}
-
-///|
-impl Decode for CustomDecode with string(_self, s) {
-  println("got string `\{s}`")
-  s
-}
-
-///|
-test "json" {
-  let compelet_json =
-    #|{"foo": {"bar": 1}, "quz": [42, true]}
-  guard compelet_json.to_array().chunks(6).map(String::from_array)
-    is [first_chunk, .. chunks]
-  let value = decode_start!(first_chunk, decode=CustomDecode::{  })
-  println("start parsing from `\{first_chunk}`")
-  loop chunks, value {
-    [chunk, .. chunks], Continue(state) => {
-      println("continue parsing `\{chunk}`")
-      continue chunks, decode_continue!(chunk, state)
-    }
-    [], Finish(v) => {
-      println("parse finished")
-      println(v.value.stringify(indent=2))
-    }
-    _, _ => raise InspectError("unreachable")
-  }
 }
