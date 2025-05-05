@@ -14,8 +14,6 @@ fn decode_start(String, decode? : &@lib.Decode) -> @lib.Value!
 // Types and methods
 
 // Type aliases
-pub typealias Context = @lib.Context
-
 pub typealias Value = @lib.Value
 
 pub traitalias Decode = @lib.Decode

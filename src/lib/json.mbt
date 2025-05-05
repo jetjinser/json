@@ -1,10 +1,3 @@
-// TODO:
-// - reasonable Error
-// - inplace mutable for some attributes
-
-///|
-type! InvalidByte (Int, Char) derive(Show)
-
 ///|
 priv struct Context {
   original : Array[Char]
@@ -12,12 +5,12 @@ priv struct Context {
   skip : Int
   arr_acc : Array[Json]
   obj_acc : Map[String, Json]
-  stack : Array[Stack]
+  stack : Array[Frame]
   decode : &Decode
 }
 
 ///|
-enum Stack {
+enum Frame {
   Array(Array[Json])
   Map(Map[String, Json])
   Key(String)
@@ -41,13 +34,13 @@ pub fn decode!(input : String, decode? : &Decode) -> Json {
   match value!(ctx) {
     Finish({ value, rest: [], .. }) => value
     Finish({ rest, .. }) => raise invalid_byte([..rest], 0)
-    Continue({ checkpoint: Checkpoint::NumberI(n), .. }) => n.to_json()
-    Continue({ checkpoint: Checkpoint::NumberD(n), .. }) => n.to_json()
-    Continue({ checkpoint: func_data, .. }) => {
-      println("unexpected end: \{func_data}")
-      // TODO: unexpected_end error
-      raise invalid_byte([], 0)
-    }
+    Continue({ rest: [], checkpoint: Checkpoint::NumberI(n), .. }) =>
+      n.to_json()
+    Continue({ rest: [], checkpoint: Checkpoint::NumberD(n), .. }) =>
+      n.to_json()
+    Continue({ checkpoint: Checkpoint::FloatError(token, skip), .. }) =>
+      raise ParseError(UnexpectedSequence(token.to_array(), skip))
+    Continue({ checkpoint: cp, .. }) => raise ParseError(UnexpectedEnd(cp))
   }
 }
 
@@ -82,12 +75,11 @@ pub fn decode_continue!(cont : String, state : ContinueValue) -> Value {
     decode: state.decode,
   }
   match state.checkpoint {
-    Value | NumberI(_) | NumberD(_) => value!(ctx)
+    Value | NumberI(_) | NumberD(_) | FloatError(_, _) => value!(ctx)
     ArrayPush(v) => array_push!(ctx, v)
+    ObjectKey => object_key!(ctx)
     ObjectValue(key) => object_value!(ctx, key)
     ObjectPush((value, key)) => object_push!(ctx, value, key)
-    Key => object_key!(ctx)
-    FloatError(_token, _skip) => value!(ctx)
   }
 }
 
@@ -207,7 +199,7 @@ fn number_exp!(ctx : Context, len : Int) -> Value {
 ///|
 fn number_exp_sign!(ctx : Context, len : Int) -> Value {
   match ctx.rest {
-    ['0'..='9', .. rest] => number_exp_sign!({ ..ctx, rest, }, len + 1)
+    ['0'..='9', .. rest] => number_exp_cont!({ ..ctx, rest, }, len + 1)
     _ => unexpected!(ctx, len, 0, Checkpoint::Value)
   }
 }
@@ -276,7 +268,7 @@ fn number_exp_cont_with_prefix!(
 fn number_minus!(ctx : Context) -> Value {
   match ctx.rest {
     ['0', .. rest] => number_zero!({ ..ctx, rest, }, 2)
-    ['0'..='9', .. rest] => number!({ ..ctx, rest, }, 2)
+    ['1'..='9', .. rest] => number!({ ..ctx, rest, }, 2)
     _ => unexpected!(ctx, 1, 0, Checkpoint::Value)
   }
 }
@@ -354,7 +346,7 @@ fn array_start!(ctx : Context, len : Int) -> Value {
     [] => unexpected!(ctx, len, 0, Checkpoint::Value)
     rest => {
       let new_acc = decode.array_start(arr_acc)
-      ctx.stack.push(Stack::Array(arr_acc))
+      ctx.stack.push(Frame::Array(arr_acc))
       value!({ ..ctx, rest, skip: skip + len, arr_acc: new_acc })
     }
   }
@@ -368,7 +360,7 @@ fn array_push!(ctx : Context, value0 : Json) -> Value {
       array_push!({ ..ctx, rest, skip: skip + 1 }, value0)
     [']', .. rest] => {
       let acc = ctx.decode.array_push(value0, ctx.arr_acc)
-      guard ctx.stack.pop() is Some(Stack::Array(old_acc))
+      guard ctx.stack.pop() is Some(Frame::Array(old_acc))
       let (array_value, new_acc) = ctx.decode.array_finish(acc, old_acc)
       continue_!(
         { ..ctx, rest, skip: skip + 1, arr_acc: new_acc },
@@ -404,7 +396,7 @@ fn object_start!(ctx : Context, len : Int) -> Value {
       )
     }
     ['"', .. rest] => {
-      ctx.stack.push(Stack::Map(obj_acc))
+      ctx.stack.push(Frame::Map(obj_acc))
       string!(
         {
           ..ctx,
@@ -426,7 +418,7 @@ fn object_value!(ctx : Context, key : String) -> Value {
     ['\ ' | '\n' | '\r' | '\t', .. rest] =>
       object_value!({ ..ctx, rest, skip: skip + 1 }, key)
     [':', .. rest] => {
-      ctx.stack.push(Stack::Key(key))
+      ctx.stack.push(Frame::Key(key))
       value!({ ..ctx, rest, skip: skip + 1 })
     }
     _ => unexpected!(ctx, 0, 0, Checkpoint::ObjectValue(key))
@@ -441,7 +433,7 @@ fn object_push!(ctx : Context, value0 : Json, key : String) -> Value {
       object_push!({ ..ctx, rest, skip: skip + 1 }, value0, key)
     ['}', .. rest] => {
       let acc = ctx.decode.object_push(key, value0, ctx.obj_acc)
-      guard ctx.stack.pop() is Some(Stack::Map(old_acc))
+      guard ctx.stack.pop() is Some(Frame::Map(old_acc))
       let (object_value, new_acc) = ctx.decode.object_finish(acc, old_acc)
       continue_!(
         { ..ctx, rest, skip: skip + 1, obj_acc: new_acc },
@@ -463,7 +455,7 @@ fn object_key!(ctx : Context) -> Value {
     ['\ ' | '\n' | '\r' | '\t', .. rest] =>
       object_key!({ ..ctx, rest, skip: skip + 1 })
     ['"', .. rest] => string!({ ..ctx, rest, skip: skip + 1 }, 0)
-    _ => unexpected!(ctx, 0, 0, Checkpoint::Key)
+    _ => unexpected!(ctx, 0, 0, Checkpoint::ObjectKey)
   }
 }
 
@@ -473,9 +465,9 @@ fn object_key!(ctx : Context) -> Value {
 fn continue_(ctx : Context, value : Json) -> Value! {
   match ctx.stack.last() {
     None => terminate!(ctx, value)
-    Some(Stack::Array(_)) => array_push!(ctx, value)
-    Some(Stack::Map(_)) => object_value!(ctx, value.as_string().unwrap())
-    Some(Stack::Key(key)) => {
+    Some(Frame::Array(_)) => array_push!(ctx, value)
+    Some(Frame::Map(_)) => object_value!(ctx, value.as_string().unwrap())
+    Some(Frame::Key(key)) => {
       ctx.stack.pop() |> ignore
       object_push!({ ..ctx }, value, key)
     }
@@ -522,7 +514,7 @@ fn unexpected(
 }
 
 ///|
-fn invalid_byte(arr : Array[Char], skip : Int) -> InvalidByte {
+fn invalid_byte(arr : Array[Char], skip : Int) -> ParseError {
   let byte = arr[skip]
-  InvalidByte((skip, byte))
+  ParseError(InvalidByte(skip, byte))
 }

@@ -11,21 +11,11 @@ fn decode_start(String, decode? : &Decode) -> Value!
 type Checkpoint
 impl Show for Checkpoint
 
-pub struct Context {
-  original : Array[Char]
-  rest : ArrayView[Char]
-  skip : Int
-  arr_acc : Array[Json]
-  obj_acc : Map[String, Json]
-  stack : Array[Stack]
-  decode : &Decode
-}
-
 pub struct ContinueValue {
   rest : ArrayView[Char]
   arr_acc : Array[Json]
   obj_acc : Map[String, Json]
-  stack : Array[Stack]
+  stack : Array[Frame]
   decode : &Decode
   checkpoint : Checkpoint
 }
@@ -38,11 +28,18 @@ pub struct FinishValue {
 }
 impl Show for FinishValue
 
-type InvalidByte
-impl Show for InvalidByte
+type Frame
+impl Show for Frame
 
-type Stack
-impl Show for Stack
+pub type! ParseError Reason
+impl Show for ParseError
+
+pub enum Reason {
+  InvalidByte(Int, Char)
+  UnexpectedEnd(Checkpoint)
+  UnexpectedSequence(Array[Char], Int)
+}
+impl Show for Reason
 
 pub enum Value {
   Continue(ContinueValue)

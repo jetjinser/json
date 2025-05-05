@@ -9,7 +9,7 @@ pub struct ContinueValue {
   rest : ArrayView[Char]
   arr_acc : JsonArray
   obj_acc : JsonObject
-  stack : Array[Stack]
+  stack : Array[Frame]
   decode : &Decode
   checkpoint : Checkpoint
 }
@@ -27,8 +27,8 @@ enum Checkpoint {
   Value
   NumberI(Int)
   NumberD(Double)
-  Key
   ArrayPush(Json)
+  ObjectKey
   ObjectValue(String)
   ObjectPush((Json, String))
   FloatError(ArrayView[Char], Int)
