@@ -2,6 +2,10 @@
 
 Streaming Json parser, inspired by [SAX (Simple API for XML)](https://en.wikipedia.org/wiki/Simple_API_for_XML).
 
+### TODOs
+
+[TODOs](./TODOs.md)
+
 ### Credits
 
 #### Developed with reference to [OTP/stdlib/json](https://github.com/erlang/otp/blob/master/lib/stdlib/src/json.erl)
