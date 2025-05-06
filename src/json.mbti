@@ -14,6 +14,14 @@ fn decode_start(String, decode? : &@lib.Decode) -> @lib.Value!
 // Types and methods
 
 // Type aliases
+pub typealias ContinueValue = @lib.ContinueValue
+
+pub typealias FinishValue = @lib.FinishValue
+
+pub typealias ParseError = @lib.ParseError
+
+pub typealias Reason = @lib.Reason
+
 pub typealias Value = @lib.Value
 
 pub traitalias Decode = @lib.Decode

@@ -34,9 +34,9 @@ pub fn decode!(input : String, decode? : &Decode) -> Json {
   match value!(ctx) {
     Finish({ value, rest: [], .. }) => value
     Finish({ rest, .. }) => raise invalid_byte([..rest], 0)
-    Continue({ rest: [], checkpoint: Checkpoint::NumberI(n), .. }) =>
+    Continue({ stack: [], checkpoint: Checkpoint::NumberI(n), .. }) =>
       n.to_json()
-    Continue({ rest: [], checkpoint: Checkpoint::NumberD(n), .. }) =>
+    Continue({ stack: [], checkpoint: Checkpoint::NumberD(n), .. }) =>
       n.to_json()
     Continue({ checkpoint: Checkpoint::FloatError(token, skip), .. }) =>
       raise ParseError(UnexpectedSequence(token.to_array(), skip))
@@ -111,6 +111,8 @@ fn number_zero!(ctx : Context, len : Int) -> Value {
       let value = ctx.decode.integer!(['0'][:])
       unexpected!(ctx, len, 0, Checkpoint::NumberI(value))
     }
+    ['.', .. rest] => number_frac!({ ..ctx, rest, }, len + 1)
+    ['e' | 'E', .. rest] => number_exp_copy!({ ..ctx, rest, }, len + 1, ['0'])
     rest => {
       let value = ctx.decode.integer!(['0'][:])
       continue_!(

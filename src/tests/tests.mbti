@@ -1,0 +1,11 @@
+package "jinser/json/tests"
+
+// Values
+
+// Types and methods
+
+// Type aliases
+pub typealias Value = @jinser/json/lib.Value
+
+// Traits
+
